@@ -59,6 +59,7 @@ import java.util.concurrent.CompletableFuture;
 
 import org.apache.rocketmq.remoting.ChannelEventListener;
 import org.apache.rocketmq.remoting.netty.NettyClientConfig;
+import org.apache.rocketmq.remoting.netty.NettyRemotingClient;
 import org.apache.rocketmq.remoting.netty.NettyRemotingServer;
 import org.apache.rocketmq.remoting.netty.NettyServerConfig;
 import org.slf4j.Logger;
@@ -83,23 +84,24 @@ public class DLedgerServer implements DLedgerProtocolHandler {
         this(dLedgerConfig, null, null, null);
     }
 
-    public DLedgerServer(DLedgerConfig dLedgerConfig, NettyServerConfig nettyServerConfig, NettyClientConfig nettyClientConfig) {
+    public DLedgerServer(DLedgerConfig dLedgerConfig, NettyServerConfig nettyServerConfig) {
+        this(dLedgerConfig, nettyServerConfig, null, null);
+    }
+
+    public DLedgerServer(DLedgerConfig dLedgerConfig, NettyServerConfig nettyServerConfig,
+        NettyClientConfig nettyClientConfig) {
         this(dLedgerConfig, nettyServerConfig, nettyClientConfig, null);
     }
 
-    public DLedgerServer(DLedgerConfig dLedgerConfig, NettyServerConfig nettyServerConfig, NettyClientConfig nettyClientConfig, ChannelEventListener channelEventListener) {
+    public DLedgerServer(DLedgerConfig dLedgerConfig, NettyServerConfig nettyServerConfig,
+        NettyClientConfig nettyClientConfig, ChannelEventListener channelEventListener) {
         this.dLedgerConfig = dLedgerConfig;
         this.memberState = new MemberState(dLedgerConfig);
         this.dLedgerStore = createDLedgerStore(dLedgerConfig.getStoreType(), this.dLedgerConfig, this.memberState);
         dLedgerRpcService = new DLedgerRpcNettyService(this, nettyServerConfig, nettyClientConfig, channelEventListener);
         dLedgerEntryPusher = new DLedgerEntryPusher(dLedgerConfig, memberState, dLedgerStore, dLedgerRpcService);
         dLedgerLeaderElector = new DLedgerLeaderElector(dLedgerConfig, memberState, dLedgerRpcService);
-        executorService = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r);
-            t.setDaemon(true);
-            t.setName("DLedgerServer-ScheduledExecutor");
-            return t;
-        });
+        executorService = Executors.newSingleThreadScheduledExecutor(new NamedThreadFactory(null, "DLedgerServer-ScheduledExecutor", true));
         this.fsmCaller = Optional.empty();
     }
 
@@ -144,7 +146,8 @@ public class DLedgerServer implements DLedgerProtocolHandler {
         return this.fsmCaller.map(StateMachineCaller::getStateMachine).orElse(null);
     }
 
-    @Override public CompletableFuture<HeartBeatResponse> handleHeartBeat(HeartBeatRequest request) throws Exception {
+    @Override
+    public CompletableFuture<HeartBeatResponse> handleHeartBeat(HeartBeatRequest request) throws Exception {
         try {
 
             PreConditions.check(memberState.getSelfId().equals(request.getRemoteId()), DLedgerResponseCode.UNKNOWN_MEMBER, "%s != %s", request.getRemoteId(), memberState.getSelfId());
@@ -160,7 +163,8 @@ public class DLedgerServer implements DLedgerProtocolHandler {
         }
     }
 
-    @Override public CompletableFuture<VoteResponse> handleVote(VoteRequest request) throws Exception {
+    @Override
+    public CompletableFuture<VoteResponse> handleVote(VoteRequest request) throws Exception {
         try {
             PreConditions.check(memberState.getSelfId().equals(request.getRemoteId()), DLedgerResponseCode.UNKNOWN_MEMBER, "%s != %s", request.getRemoteId(), memberState.getSelfId());
             PreConditions.check(memberState.getGroup().equals(request.getGroup()), DLedgerResponseCode.UNKNOWN_GROUP, "%s != %s", request.getGroup(), memberState.getGroup());
@@ -264,7 +268,8 @@ public class DLedgerServer implements DLedgerProtocolHandler {
         }
     }
 
-    @Override public CompletableFuture<MetadataResponse> handleMetadata(MetadataRequest request) throws Exception {
+    @Override
+    public CompletableFuture<MetadataResponse> handleMetadata(MetadataRequest request) throws Exception {
         try {
             PreConditions.check(memberState.getSelfId().equals(request.getRemoteId()), DLedgerResponseCode.UNKNOWN_MEMBER, "%s != %s", request.getRemoteId(), memberState.getSelfId());
             PreConditions.check(memberState.getGroup().equals(request.getGroup()), DLedgerResponseCode.UNKNOWN_GROUP, "%s != %s", request.getGroup(), memberState.getGroup());
@@ -289,7 +294,8 @@ public class DLedgerServer implements DLedgerProtocolHandler {
         return null;
     }
 
-    @Override public CompletableFuture<PushEntryResponse> handlePush(PushEntryRequest request) throws Exception {
+    @Override
+    public CompletableFuture<PushEntryResponse> handlePush(PushEntryRequest request) throws Exception {
         try {
             PreConditions.check(memberState.getSelfId().equals(request.getRemoteId()), DLedgerResponseCode.UNKNOWN_MEMBER, "%s != %s", request.getRemoteId(), memberState.getSelfId());
             PreConditions.check(memberState.getGroup().equals(request.getGroup()), DLedgerResponseCode.UNKNOWN_GROUP, "%s != %s", request.getGroup(), memberState.getGroup());
@@ -430,26 +436,54 @@ public class DLedgerServer implements DLedgerProtocolHandler {
         }
     }
 
+    @Deprecated
     public DLedgerStore getdLedgerStore() {
         return dLedgerStore;
     }
 
+    public DLedgerStore getDLedgerStore() {
+        return dLedgerStore;
+    }
+
+    @Deprecated
     public DLedgerRpcService getdLedgerRpcService() {
         return dLedgerRpcService;
     }
 
+    public DLedgerRpcService getDLedgerRpcService() {
+        return dLedgerRpcService;
+    }
+
+    @Deprecated
     public DLedgerLeaderElector getdLedgerLeaderElector() {
         return dLedgerLeaderElector;
     }
 
+    public DLedgerLeaderElector getDLedgerLeaderElector() {
+        return dLedgerLeaderElector;
+    }
+
+    @Deprecated
     public DLedgerConfig getdLedgerConfig() {
+        return dLedgerConfig;
+    }
+
+    public DLedgerConfig getDLedgerConfig() {
         return dLedgerConfig;
     }
 
     public NettyRemotingServer getRemotingServer() {
         if (this.dLedgerRpcService instanceof DLedgerRpcNettyService) {
-            return ((DLedgerRpcNettyService)this.dLedgerRpcService).getRemotingServer();
+            return ((DLedgerRpcNettyService) this.dLedgerRpcService).getRemotingServer();
         }
         return null;
     }
+
+    public NettyRemotingClient getRemotingClient() {
+        if (this.dLedgerRpcService instanceof DLedgerRpcNettyService) {
+            return ((DLedgerRpcNettyService) this.dLedgerRpcService).getRemotingClient();
+        }
+        return null;
+    }
+
 }
